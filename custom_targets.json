@@ -1,0 +1,36 @@
+{
+    "MCU_STM32F401xC": {
+        "inherits": [
+            "MCU_STM32F4"
+        ],
+        "public": false,
+        "extra_labels_add": [
+            "STM32F401xC"
+        ],
+        "macros_add": [
+            "STM32F401xC"
+        ]
+    },
+
+    "BUS_BENCH": {
+        "inherits": [
+            "MCU_STM32F401xC"
+        ],
+        "overrides": {
+            "clock_source": "USE_PLL_HSE_XTAL"
+        },
+        "detect_code": [
+            "1234"
+        ],
+        "device_has_add": [
+            "USBDEVICE"
+        ],
+        "device_has_remove": [
+            "FLASH"
+        ],
+        "components_remove": [
+            "FLASHIAP"
+        ],
+        "device_name": "STM32F401RCTx"
+    }
+}
