@@ -248,7 +248,7 @@ static inline PinName get_pin_name(port_group group, uint8_t pin)
     return (PinName)(group * 16 + pin);
 }
 
-static port_cell *get_port_cell(PinName name, port_type type)
+static port_cell *get_port_cell(PinName name, port_type type, uint8_t *pin_num)
 {
     uint8_t i, j;
 
@@ -256,6 +256,7 @@ static port_cell *get_port_cell(PinName name, port_type type)
         port_cell *cell = cell_at(&g_port_desc_tab[type], i);
         for (j = 0; j < g_port_desc_tab[type].pin_cnt; j++) {
             if (cell->pin[j].name == name) {
+                *pin_num = j;
                 return cell;
             }
         }
@@ -269,40 +270,41 @@ static void reset_other_cell(PinName name, port_type type)
     uint8_t i, j;
 
     for (i = 0; i < count_of(g_port_desc_tab); i++) {
+        uint8_t num;
         if (i == type) {
             continue;
         }
 
-        port_cell *cell = get_port_cell(name, type);
-        if (cell == NULL || cell->enforcer == NULL) {
+        port_cell *cell = get_port_cell(name, (port_type)i, &num);
+        if (cell == NULL || cell->enforcer == NULL || !cell->pin[num].is_used) {
             continue;
         }
 
-        log_info("start to reset %d port enforcer\n", type);
-        if (type == PORT_TYPE_GPIO) {
+        log_info("start to reset %d port enforcer\n", i);
+        if (i == PORT_TYPE_GPIO) {
             DigitalInOut *digital_io = (DigitalInOut *)cell->enforcer;
             delete digital_io;
-        } else if (type == PORT_TYPE_PWM) {
+        } else if (i == PORT_TYPE_PWM) {
             PwmOut *pwm_out = (PwmOut *)cell->enforcer;
             delete pwm_out;
-        } else if (type == PORT_TYPE_ADC) {
+        } else if (i == PORT_TYPE_ADC) {
             AnalogIn *adc_in = (AnalogIn *)cell->enforcer;
             delete adc_in;
-        } else if (type == PORT_TYPE_SERIAL) {
+        } else if (i == PORT_TYPE_SERIAL) {
             BufferedSerial *buf_serial = (BufferedSerial *)cell->enforcer;
             delete buf_serial;
-        } else if (type == PORT_TYPE_I2C) {
+        } else if (i == PORT_TYPE_I2C) {
             I2C *i2c = (I2C *)cell->enforcer;
             delete i2c;
-        } else if (type == PORT_TYPE_SPI) {
+        } else if (i == PORT_TYPE_SPI) {
             SPI *spi = (SPI *)cell->enforcer;
             delete spi;
         } else {
-            log_err("Not support type %d to reset\n", type);
+            log_err("Not support type %d to reset\n", i);
         }
         cell->enforcer = NULL;
 
-        for (j = 0; j < g_port_desc_tab[type].pin_cnt; j++) {
+        for (j = 0; j < g_port_desc_tab[i].pin_cnt; j++) {
             cell->pin[j].is_used = 0;
         }
     }
@@ -312,19 +314,20 @@ int port_hal_gpio_config(port_group group, uint8_t pin, gpio_config *attr)
 {
     port_cell *cell;
     PinName name = get_pin_name(group, pin);
+    uint8_t num;
 
     if (name > PIN_NAME_MAX) {
         log_err("NOT support group %d, pin %d\n", group, pin);
         return PORT_CFG_INVALID_PARAM;
     }
     
-    cell = get_port_cell(name, PORT_TYPE_GPIO);
+    cell = get_port_cell(name, PORT_TYPE_GPIO, &num);
     if (cell == NULL) {
         log_err("NOT support PinName: %d\n", name);
         return PORT_CFG_INVALID_PARAM;
     }
 
-    if (cell->pin[0].is_used) {
+    if (cell->enforcer != NULL) {
         log_info("The pin has been inited: %d\n", name);
         return PORT_CFG_OK;
     }
@@ -340,14 +343,15 @@ static int gpio_io_func(PinName name, bool is_output, uint8_t *value)
 {
     port_cell *cell;
     DigitalInOut *digital_io;
+    uint8_t num;
 
-    cell = get_port_cell(name, PORT_TYPE_GPIO);
+    cell = get_port_cell(name, PORT_TYPE_GPIO, &num);
     if (cell == NULL) {
         log_err("NOT support PinName: %d\n", name);
         return PORT_CFG_INVALID_PARAM;
     }
 
-    if (!cell->pin[0].is_used || cell->enforcer == NULL) {
+    if (cell->enforcer == NULL) {
         log_err("PinName: %d NOT inited\n", name);
         return PORT_CFG_NOT_INIT;
     }
@@ -410,13 +414,14 @@ int port_hal_serial_config(port_group group, uint8_t pin, const uart_config *con
     port_cell *cell;
     BufferedSerial *buf_serial;
     PinName name = get_pin_name(group, pin);
+    uint8_t num;
 
     if (name > PIN_NAME_MAX) {
         log_err("NOT support group %d, pin %d\n", group, pin);
         return PORT_CFG_INVALID_PARAM;
     }
     
-    cell = get_port_cell(name, PORT_TYPE_SERIAL);
+    cell = get_port_cell(name, PORT_TYPE_SERIAL, &num);
     if (cell == NULL) {
         log_err("NOT support PinName: %d\n", name);
         return PORT_CFG_INVALID_PARAM;
@@ -431,6 +436,7 @@ int port_hal_serial_config(port_group group, uint8_t pin, const uart_config *con
         cell->enforcer = buf_serial;
     }
 
+    buf_serial->set_blocking(false);
     buf_serial->set_baud(g_baud_rate_tab[config->buad_rate]);
     buf_serial->set_format(g_word_len_tab[config->word_len], g_parity_tab[config->parity],
         g_stop_bit_tab[config->stop_bit]);
@@ -444,14 +450,15 @@ static int serial_io_func(PinName name, uint8_t *data, uint8_t *len, bool is_out
 {
     port_cell *cell;
     BufferedSerial *buf_serial;
+    uint8_t num;
 
-    cell = get_port_cell(name, PORT_TYPE_SERIAL);
+    cell = get_port_cell(name, PORT_TYPE_SERIAL, &num);
     if (cell == NULL) {
         log_err("NOT support PinName: %d\n", name);
         return PORT_CFG_INVALID_PARAM;
     }
 
-    if (!cell->pin[0].is_used || cell->enforcer == NULL) {
+    if (cell->enforcer == NULL) {
         log_err("PinName: %d NOT inited\n", name);
         return PORT_CFG_NOT_INIT;
     }
@@ -460,7 +467,9 @@ static int serial_io_func(PinName name, uint8_t *data, uint8_t *len, bool is_out
     if (is_output) {
         buf_serial->write(data, *len);
     } else {
-        *len = buf_serial->read(data, *len);
+        ssize_t ret;
+        ret = buf_serial->read(data, *len);
+        *len = (ret == -EAGAIN ? 0 : ret);
     }
 
     return PORT_CFG_OK;

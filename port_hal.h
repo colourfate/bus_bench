@@ -125,8 +125,8 @@ int port_hal_pwm_config(port_group group, uint8_t pin, const pwm_config *config)
 
 int port_hal_gpio_read(port_group group, uint8_t pin, uint8_t *value);
 int port_hal_gpio_write(port_group group, uint8_t pin, uint8_t value);
-int port_hal_serial_out(uint8_t uart_num, uint8_t *data, uint8_t len);
-int port_hal_serial_in(uint8_t uart_num, uint8_t *data, uint8_t *len);
+int port_hal_serial_out(port_group group, uint8_t pin, uint8_t *data, uint8_t len);
+int port_hal_serial_in(port_group group, uint8_t pin, uint8_t *data, uint8_t *len);
 int port_hal_pwm_write(port_group group, uint8_t pin, uint16_t value);
 
 #endif

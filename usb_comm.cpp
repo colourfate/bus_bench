@@ -51,7 +51,7 @@ int usb_msg_queue_put(const cmd_packet *packet)
         return USB_MSG_INVAILD_PARAM;
     }
 
-    if (packet->data_len > USB_MSG_DATA_LEN_MAX || packet->data_len == 0) {
+    if (packet->data_len > USB_MSG_DATA_LEN_MAX) {
         log_err("msg data len is invalid: %d\n", packet->data_len);
         return USB_MSG_INTER_ERROR;
     }
