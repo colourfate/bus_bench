@@ -11,7 +11,6 @@
             "STM32F401xC"
         ]
     },
-
     "BUS_BENCH": {
         "inherits": [
             "MCU_STM32F401xC"
@@ -19,6 +18,9 @@
         "overrides": {
             "clock_source": "USE_PLL_HSE_XTAL"
         },
+        "macros_add": [
+            "HSE_VALUE=12000000"
+        ],
         "detect_code": [
             "1234"
         ],

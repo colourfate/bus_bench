@@ -1,6 +1,6 @@
 #include "usb_msg_queue.h"
 #include "port_hal.h"
-#include "common.h"
+#include "bus_common.h"
 #include "usb_comm.h"
 
 int usb_msg_queue_init(void)
@@ -84,11 +84,6 @@ static int pwm_write_exec_func(cmd_packet *packet)
     }
 
     value = packet->data[0] | packet->data[1] << 8;
-    if (value > HAL_PWM_MAX_PULSE) {
-        log_err("Invalid param data: %d\n", packet->data[0]);
-        return USB_MSG_FAILED;
-    }
-
     ret = port_hal_pwm_write((port_group)packet->gpio.bit.group, packet->gpio.bit.pin, value);
     if (ret != osOK) {
         log_err("port_hal_gpio_read failed\n");
@@ -161,7 +156,7 @@ static const cmd_exec_unit g_cmd_exec_tab[] = {
     /* config function */
     { PORT_TYPE_GPIO, INTF_CMD_MODE_CFG, PORT_DIR_MAX, gpio_cfg_exec_func },
     { PORT_TYPE_SERIAL, INTF_CMD_MODE_CFG, PORT_DIR_MAX, serial_cfg_exec_func },
-    { PORT_TYPE_PWM, INTF_CMD_MODE_CFG, PORT_DIR_OUT, pwm_cfg_exec_func }
+    { PORT_TYPE_PWM, INTF_CMD_MODE_CFG, PORT_DIR_MAX, pwm_cfg_exec_func }
 };
 
 int msg_parse_exec(cmd_packet *packet)

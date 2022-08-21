@@ -3,9 +3,9 @@
 
 #include "mbed.h"
 
-#define HAL_PWM_MAX_FREQ 20000
-#define HAL_PWM_MIN_FREQ 50
-#define HAL_PWM_MAX_PULSE 1000
+#define HAL_PWM_MAX_FREQ 50000
+#define HAL_PWM_MIN_FREQ 1
+#define HAL_PWM_MAX_DUTY_CYCLE 1000
 
 enum {
     PORT_CFG_OK,
@@ -22,7 +22,9 @@ typedef enum {
     PORT_TYPE_SERIAL,
     PORT_TYPE_I2C,
     PORT_TYPE_SPI,
-    PORT_TYPE_CAN,
+    //PORT_TYPE_INT,
+    //PORT_TYPE_IC,
+    //PORT_TYPE_CAN,
     PORT_TYPE_MAX
 } port_type;
 
@@ -114,7 +116,7 @@ typedef struct {
 } gpio_config;
 
 typedef struct {
-    uint16_t frequency;     // 1Hz~20KHz
+    uint16_t frequency;     // 1Hz~50KHz
 } pwm_config;
 
 void port_hal_init(void);

@@ -1,6 +1,6 @@
 #include "port_hal.h"
 #include "mbed.h"
-#include "common.h"
+#include "bus_common.h"
 #include "usb_comm.h"
 
 #define RESERVE_PIN 0xff
@@ -14,15 +14,15 @@
 #define UART_PORT_MAX 3
 
 enum {
-    I2C_SCL, I2C_SDA, I2C_MAX
+    PORT_I2C_SCL, PORT_I2C_SDA, PORT_I2C_MAX
 };
 
 enum {
-    UART_TX, UART_RX, UART_CTS, UART_RTS, UART_MAX
+    PORT_UART_TX, PORT_UART_RX, PORT_UART_CTS, PORT_UART_RTS, PORT_UART_MAX
 };
 
 enum {
-    SPI_SLK, SPI_MISO, SPI_MOSI, SPI_SEL, SPI_MAX
+    PORT_SPI_SLK, PORT_SPI_MISO, PORT_SPI_MOSI, PORT_SPI_SEL, PORT_SPI_MAX
 };
 
 typedef union {
@@ -56,6 +56,22 @@ static inline port_cell *cell_at(port_describe *port_desc, uint8_t index)
     return (port_cell *)((uint8_t *)port_desc->cell + index * get_cell_size(port_desc->pin_cnt));
 }
 
+static void port_pin_reserve(port_describe *desc)
+{
+    port_cell *cell;
+
+    /* for usb connect */
+    cell = cell_at(desc, PA_11);
+    cell->pin[0].data = RESERVE_PIN;
+    cell = cell_at(desc, PA_12);
+    cell->pin[0].data = RESERVE_PIN;
+    /* for swd */
+    cell = cell_at(desc, PA_13);
+    cell->pin[0].data = RESERVE_PIN;
+    cell = cell_at(desc, PA_14);
+    cell->pin[0].data = RESERVE_PIN;
+}
+
 static void gpio_port_init(port_describe *desc)
 {
     uint8_t i;
@@ -68,11 +84,7 @@ static void gpio_port_init(port_describe *desc)
         cell->pin[0].name = i;
     }
 
-    /* for usb connect */
-    cell = cell_at(desc, PA_11);
-    cell->pin[0].data = RESERVE_PIN;
-    cell = cell_at(desc, PA_12);
-    cell->pin[0].data = RESERVE_PIN;
+    port_pin_reserve(desc);
 }
 
 static void pwm_port_init(port_describe *desc)
@@ -95,10 +107,7 @@ static void pwm_port_init(port_describe *desc)
     cell = cell_at(desc, i++);
     cell->pin[0].name = PC_9;
 
-    cell = cell_at(desc, PA_11);
-    cell->pin[0].data = RESERVE_PIN;
-    cell = cell_at(desc, PA_12);
-    cell->pin[0].data = RESERVE_PIN;
+    port_pin_reserve(desc);
 }
 
 static void adc_port_init(port_describe *desc)
@@ -138,16 +147,16 @@ static void i2c_port_init(port_describe *desc)
     memset((uint8_t *)desc->cell, 0, get_cell_size(desc->pin_cnt) * desc->cell_cnt);
 
     cell = cell_at(desc, 0);
-    cell->pin[I2C_SCL].name = PB_6;
-    cell->pin[I2C_SDA].name = PB_7;
+    cell->pin[PORT_I2C_SCL].name = PB_6;
+    cell->pin[PORT_I2C_SDA].name = PB_7;
 
     cell = cell_at(desc, 1);
-    cell->pin[I2C_SCL].name = PB_10;
-    cell->pin[I2C_SDA].name = PB_3;
+    cell->pin[PORT_I2C_SCL].name = PB_10;
+    cell->pin[PORT_I2C_SDA].name = PB_3;
 
     cell = cell_at(desc, 2);
-    cell->pin[I2C_SCL].name = PA_8;
-    cell->pin[I2C_SDA].name = PC_9;
+    cell->pin[PORT_I2C_SCL].name = PA_8;
+    cell->pin[PORT_I2C_SDA].name = PC_9;
 }
 
 static void spi_port_init(port_describe *desc)
@@ -158,22 +167,22 @@ static void spi_port_init(port_describe *desc)
     memset((uint8_t *)desc->cell, 0, get_cell_size(desc->pin_cnt) * desc->cell_cnt);
 
     cell = cell_at(desc, 0);
-    cell->pin[SPI_SLK].name = PA_5;
-    cell->pin[SPI_MISO].name = PA_6;
-    cell->pin[SPI_MOSI].name = PA_7;
-    cell->pin[SPI_SEL].name = PA_4;
+    cell->pin[PORT_SPI_SLK].name = PA_5;
+    cell->pin[PORT_SPI_MISO].name = PA_6;
+    cell->pin[PORT_SPI_MOSI].name = PA_7;
+    cell->pin[PORT_SPI_SEL].name = PA_4;
 
     cell = cell_at(desc, 1);
-    cell->pin[SPI_SLK].name = PB_13;
-    cell->pin[SPI_MISO].name = PB_14;
-    cell->pin[SPI_MOSI].name = PB_15;
-    cell->pin[SPI_SEL].name = PB_12;
+    cell->pin[PORT_SPI_SLK].name = PB_13;
+    cell->pin[PORT_SPI_MISO].name = PB_14;
+    cell->pin[PORT_SPI_MOSI].name = PB_15;
+    cell->pin[PORT_SPI_SEL].name = PB_12;
 
     cell = cell_at(desc, 2);
-    cell->pin[SPI_SLK].name = PC_10;
-    cell->pin[SPI_MISO].name = PC_11;
-    cell->pin[SPI_MOSI].name = PC_12;
-    cell->pin[SPI_SEL].name = PA_4;
+    cell->pin[PORT_SPI_SLK].name = PC_10;
+    cell->pin[PORT_SPI_MISO].name = PC_11;
+    cell->pin[PORT_SPI_MOSI].name = PC_12;
+    cell->pin[PORT_SPI_SEL].name = PA_4;
 }
 
 static void uart_port_init(port_describe *desc)
@@ -184,22 +193,22 @@ static void uart_port_init(port_describe *desc)
     memset((uint8_t *)desc->cell, 0, get_cell_size(desc->pin_cnt) * desc->cell_cnt);
 
     cell = cell_at(desc, 0);
-    cell->pin[UART_TX].name = PA_9;
-    cell->pin[UART_RX].name = PA_10;
-    cell->pin[UART_CTS].name = PA_11;
-    cell->pin[UART_RTS].name = PA_12;
+    cell->pin[PORT_UART_TX].name = PA_9;
+    cell->pin[PORT_UART_RX].name = PA_10;
+    cell->pin[PORT_UART_CTS].name = PA_11;
+    cell->pin[PORT_UART_RTS].name = PA_12;
 
     cell = cell_at(desc, 1);
-    cell->pin[UART_TX].name = PA_2;
-    cell->pin[UART_RX].name = PA_3;
-    cell->pin[UART_CTS].name = PA_0;
-    cell->pin[UART_RTS].name = PA_1;
+    cell->pin[PORT_UART_TX].name = PA_2;
+    cell->pin[PORT_UART_RX].name = PA_3;
+    cell->pin[PORT_UART_CTS].name = PA_0;
+    cell->pin[PORT_UART_RTS].name = PA_1;
 
     cell = cell_at(desc, 2);
-    cell->pin[UART_TX].name = PC_6;
-    cell->pin[UART_RX].name = PC_7;
-    cell->pin[UART_CTS].data = RESERVE_PIN;
-    cell->pin[UART_RTS].data = RESERVE_PIN;
+    cell->pin[PORT_UART_TX].name = PC_6;
+    cell->pin[PORT_UART_RX].name = PC_7;
+    cell->pin[PORT_UART_CTS].data = RESERVE_PIN;
+    cell->pin[PORT_UART_RTS].data = RESERVE_PIN;
 }
 
 void port_hal_init(void)
@@ -420,6 +429,12 @@ int port_hal_serial_config(port_group group, uint8_t pin, const uart_config *con
         log_err("NOT support group %d, pin %d\n", group, pin);
         return PORT_CFG_INVALID_PARAM;
     }
+
+    if (config->buad_rate >= PORT_UART_BUAD_MAX || config->word_len >= PORT_UART_WORT_LEN_MAX ||
+        config->parity >= PORT_UART_PARITY_MAX || config->stop_bit >= PORT_UART_STOP_BIT_MAX) {
+        log_err("uart config invailed\n");
+        return PORT_CFG_INVALID_PARAM;
+    }
     
     cell = get_port_cell(name, PORT_TYPE_SERIAL, &num);
     if (cell == NULL) {
@@ -432,7 +447,7 @@ int port_hal_serial_config(port_group group, uint8_t pin, const uart_config *con
         log_info("The pin has been inited: %d\n", name);
         buf_serial = (BufferedSerial *)cell->enforcer;
     } else {
-        buf_serial = new BufferedSerial((PinName)cell->pin[UART_TX].name, (PinName)cell->pin[UART_RX].name);
+        buf_serial = new BufferedSerial((PinName)cell->pin[PORT_UART_TX].name, (PinName)cell->pin[PORT_UART_RX].name);
         cell->enforcer = buf_serial;
     }
 
@@ -440,8 +455,8 @@ int port_hal_serial_config(port_group group, uint8_t pin, const uart_config *con
     buf_serial->set_baud(g_baud_rate_tab[config->buad_rate]);
     buf_serial->set_format(g_word_len_tab[config->word_len], g_parity_tab[config->parity],
         g_stop_bit_tab[config->stop_bit]);
-    cell->pin[UART_TX].is_used = 1;
-    cell->pin[UART_RX].is_used = 1;
+    cell->pin[PORT_UART_TX].is_used = 1;
+    cell->pin[PORT_UART_RX].is_used = 1;
 
     return PORT_CFG_OK;
 }
@@ -511,10 +526,73 @@ int port_hal_serial_in(port_group group, uint8_t pin, uint8_t *data, uint8_t *le
 
 int port_hal_pwm_config(port_group group, uint8_t pin, const pwm_config *config)
 {
-    return 0;
+    port_cell *cell;
+    PwmOut *pwm_out;
+    PinName name = get_pin_name(group, pin);
+    uint8_t num;
+
+    if (name > PIN_NAME_MAX) {
+        log_err("NOT support group %d, pin %d\n", group, pin);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    if (config->frequency > HAL_PWM_MAX_FREQ || config->frequency < HAL_PWM_MIN_FREQ) {
+        log_err("pwm config invailed\n");
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    cell = get_port_cell(name, PORT_TYPE_PWM, &num);
+    if (cell == NULL) {
+        log_err("NOT support PinName: %d\n", name);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    reset_other_cell(name, PORT_TYPE_PWM);
+    if (cell->enforcer != NULL) {
+        log_info("The pin has been inited: %d\n", name);
+        pwm_out = (PwmOut *)cell->enforcer;
+    } else {
+        pwm_out = new PwmOut(name);
+        cell->enforcer = pwm_out;
+    }
+
+    log_info("freq: %d, period: %d\n", config->frequency, 1000000 / config->frequency);
+    pwm_out->period_us(1000000 / config->frequency);
+    cell->pin[0].is_used = 1;
+
+    return PORT_CFG_OK;
 }
 
 int port_hal_pwm_write(port_group group, uint8_t pin, uint16_t value)
 {
-    return 0;
+    port_cell *cell;
+    PwmOut *pwm_out;
+    uint8_t num;
+    PinName name = get_pin_name(group, pin);
+
+    if (name > PIN_NAME_MAX) {
+        log_err("NOT support group %d, pin %d\n", group, pin);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    if (value > HAL_PWM_MAX_DUTY_CYCLE) {
+        log_err("duty cycle invalied: %d\n", value);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    cell = get_port_cell(name, PORT_TYPE_PWM, &num);
+    if (cell == NULL) {
+        log_err("NOT support PinName: %d\n", name);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    if (cell->enforcer == NULL) {
+        log_err("PinName: %d NOT inited\n", name);
+        return PORT_CFG_NOT_INIT;
+    }
+
+    pwm_out = (PwmOut *)cell->enforcer;
+    pwm_out->write(value / 1000.0f);
+
+    return PORT_CFG_OK;
 }
