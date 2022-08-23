@@ -93,6 +93,29 @@ static int pwm_write_exec_func(cmd_packet *packet)
     return USB_MSG_OK;
 }
 
+static int adc_write_exec_func(cmd_packet *packet)
+{
+    int ret;
+    uint16_t value;
+
+    log_info("\n");
+    if (packet->data_len != 2) {
+        log_err("Invalid param len: %d\n", packet->data_len);
+        return USB_MSG_FAILED;
+    }
+
+    ret = port_hal_adc_read((port_group)packet->gpio.bit.group, packet->gpio.bit.pin, &value);
+    if (ret != osOK) {
+        log_err("port_hal_gpio_read failed\n");
+        return USB_MSG_FAILED;
+    }
+
+    packet->data[0] = (uint8_t)value;
+    packet->data[1] = (uint8_t)(value >> 8);
+
+    return USB_MSG_OK;
+}
+
 static int gpio_cfg_exec_func(cmd_packet *packet)
 {
     int ret;
@@ -133,9 +156,23 @@ static int pwm_cfg_exec_func(cmd_packet *packet)
         return osError;
     }
 
-    ret = port_hal_pwm_config((port_group)packet->gpio.bit.group, packet->gpio.bit.pin, (const pwm_config *)packet->data);
+    ret = port_hal_pwm_config((port_group)packet->gpio.bit.group, packet->gpio.bit.pin,
+        (const pwm_config *)packet->data);
     packet->data_len = 1;
     packet->data[0] = ret;
+
+    return ret;
+}
+
+static int adc_cfg_exec_func(cmd_packet *packet)
+{
+    int ret;
+    log_info("\n");
+
+    ret = port_hal_adc_config((port_group)packet->gpio.bit.group, packet->gpio.bit.pin);
+    packet->data_len = 1;
+    packet->data[0] = ret;
+
     return ret;
 }
 
@@ -153,10 +190,12 @@ static const cmd_exec_unit g_cmd_exec_tab[] = {
     { PORT_TYPE_SERIAL, INTF_CMD_MODE_CTRL, PORT_DIR_IN, serial_in_exec_func },
     { PORT_TYPE_SERIAL, INTF_CMD_MODE_CTRL, PORT_DIR_OUT, serial_out_exec_func },
     { PORT_TYPE_PWM, INTF_CMD_MODE_CTRL, PORT_DIR_OUT, pwm_write_exec_func },
+    { PORT_TYPE_ADC, INTF_CMD_MODE_CTRL, PORT_DIR_IN, adc_write_exec_func },
     /* config function */
     { PORT_TYPE_GPIO, INTF_CMD_MODE_CFG, PORT_DIR_MAX, gpio_cfg_exec_func },
     { PORT_TYPE_SERIAL, INTF_CMD_MODE_CFG, PORT_DIR_MAX, serial_cfg_exec_func },
-    { PORT_TYPE_PWM, INTF_CMD_MODE_CFG, PORT_DIR_MAX, pwm_cfg_exec_func }
+    { PORT_TYPE_PWM, INTF_CMD_MODE_CFG, PORT_DIR_MAX, pwm_cfg_exec_func },
+    { PORT_TYPE_ADC, INTF_CMD_MODE_CFG, PORT_DIR_MAX, adc_cfg_exec_func }
 };
 
 int msg_parse_exec(cmd_packet *packet)

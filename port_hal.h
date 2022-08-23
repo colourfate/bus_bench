@@ -113,6 +113,7 @@ typedef enum {
 
 typedef struct {
     uint8_t speed : 2;
+    uint8_t reserve : 6;
 } gpio_config;
 
 typedef struct {
@@ -124,11 +125,13 @@ void port_hal_deinit(void);
 int port_hal_gpio_config(port_group group, uint8_t pin, gpio_config *attr);
 int port_hal_serial_config(port_group group, uint8_t pin, const uart_config *config);
 int port_hal_pwm_config(port_group group, uint8_t pin, const pwm_config *config);
+int port_hal_adc_config(port_group group, uint8_t pin);
 
 int port_hal_gpio_read(port_group group, uint8_t pin, uint8_t *value);
 int port_hal_gpio_write(port_group group, uint8_t pin, uint8_t value);
 int port_hal_serial_out(port_group group, uint8_t pin, uint8_t *data, uint8_t len);
 int port_hal_serial_in(port_group group, uint8_t pin, uint8_t *data, uint8_t *len);
 int port_hal_pwm_write(port_group group, uint8_t pin, uint16_t value);
+int port_hal_adc_read(port_group group, uint8_t pin, uint16_t *value);
 
 #endif

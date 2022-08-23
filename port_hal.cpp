@@ -319,6 +319,9 @@ static void reset_other_cell(PinName name, port_type type)
     }
 }
 
+/*********************************************************************************
+ ************************************ GPIO ***************************************
+ *********************************************************************************/
 int port_hal_gpio_config(port_group group, uint8_t pin, gpio_config *attr)
 {
     port_cell *cell;
@@ -410,6 +413,10 @@ int port_hal_gpio_read(port_group group, uint8_t pin, uint8_t *value)
 
     return gpio_io_func(name, false, value);
 }
+
+/*********************************************************************************
+ ************************************ UART ***************************************
+ *********************************************************************************/
 
 static const uint32_t g_baud_rate_tab[PORT_UART_BUAD_MAX] = { 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200,
     230400, 460800, 921600, 1000000, 2000000, 4000000 };
@@ -524,6 +531,10 @@ int port_hal_serial_in(port_group group, uint8_t pin, uint8_t *data, uint8_t *le
     return serial_io_func(name, data, len, false);
 }
 
+/*********************************************************************************
+ ************************************ PWM ****************************************
+ *********************************************************************************/
+
 int port_hal_pwm_config(port_group group, uint8_t pin, const pwm_config *config)
 {
     port_cell *cell;
@@ -536,7 +547,7 @@ int port_hal_pwm_config(port_group group, uint8_t pin, const pwm_config *config)
         return PORT_CFG_INVALID_PARAM;
     }
 
-    if (config->frequency > HAL_PWM_MAX_FREQ || config->frequency < HAL_PWM_MIN_FREQ) {
+    if (config == NULL || config->frequency > HAL_PWM_MAX_FREQ || config->frequency < HAL_PWM_MIN_FREQ) {
         log_err("pwm config invailed\n");
         return PORT_CFG_INVALID_PARAM;
     }
@@ -593,6 +604,78 @@ int port_hal_pwm_write(port_group group, uint8_t pin, uint16_t value)
 
     pwm_out = (PwmOut *)cell->enforcer;
     pwm_out->write(value / 1000.0f);
+
+    return PORT_CFG_OK;
+}
+
+/*********************************************************************************
+ ************************************ ADC ****************************************
+ *********************************************************************************/
+#define PORT_HAL_ADC_REF 3.3f
+
+int port_hal_adc_config(port_group group, uint8_t pin)
+{
+    port_cell *cell;
+    AnalogIn *adc_in;
+    PinName name = get_pin_name(group, pin);
+    uint8_t num;
+
+    if (name > PIN_NAME_MAX) {
+        log_err("NOT support group %d, pin %d\n", group, pin);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    cell = get_port_cell(name, PORT_TYPE_ADC, &num);
+    if (cell == NULL) {
+        log_err("NOT support PinName: %d\n", name);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    reset_other_cell(name, PORT_TYPE_ADC);
+    if (cell->enforcer != NULL) {
+        log_info("The pin has been inited: %d\n", name);
+        adc_in = (AnalogIn *)cell->enforcer;
+    } else {
+        adc_in = new AnalogIn(name);
+        cell->enforcer = adc_in;
+    }
+
+    adc_in->set_reference_voltage(PORT_HAL_ADC_REF);
+    cell->pin[0].is_used = 1;
+
+    return PORT_CFG_OK;
+}
+
+int port_hal_adc_read(port_group group, uint8_t pin, uint16_t *value)
+{
+    port_cell *cell;
+    AnalogIn *adc_in;
+    uint8_t num;
+    PinName name = get_pin_name(group, pin);
+
+    if (name > PIN_NAME_MAX) {
+        log_err("NOT support group %d, pin %d\n", group, pin);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    if (value == NULL) {
+        log_err("value is NULL\n", value);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    cell = get_port_cell(name, PORT_TYPE_ADC, &num);
+    if (cell == NULL) {
+        log_err("NOT support PinName: %d\n", name);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    if (cell->enforcer == NULL) {
+        log_err("PinName: %d NOT inited\n", name);
+        return PORT_CFG_NOT_INIT;
+    }
+
+    adc_in = (AnalogIn *)cell->enforcer;
+    *value = adc_in->read_u16();
 
     return PORT_CFG_OK;
 }
