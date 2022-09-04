@@ -2,7 +2,15 @@
 #include "usb_msg_queue.h"
 #include "port_hal.h"
 
+using duration = std::chrono::duration<int, std::milli>;
 uint8_t g_usb_msg[INTF_PROTOCOL_PACKET_MAX];
+
+static BufferedSerial serial_port(PA_2, PA_3, 115200);
+
+FileHandle *mbed::mbed_override_console(int fd)
+{
+    return &serial_port;
+}
 
 int main()
 {
@@ -12,6 +20,7 @@ int main()
     usb_msg_queue_init();
     usb_comm_init();
     log_info("usb init ok\n");
+    printf("usb init ok\n");
 
     packet = (cmd_packet *)g_usb_msg;
     packet->data_len = USB_MSG_DATA_LEN_MAX;
@@ -43,9 +52,9 @@ int main()
                 log_info_raw("%c(%d) ", packet->data[i], i);
             }
 
-            ret = usb_msg_queue_put(packet);
+            ret = usb_msg_queue_block_put(packet);
             if (ret != USB_MSG_OK) {
-                log_err("usb_msg_queue_put failed\n");
+                log_err("usb_msg_queue_block_put failed\n");
             }
         }
     }

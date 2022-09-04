@@ -7,6 +7,7 @@
 #define PIN_NAME_MAX PC_15
 
 #define GPIO_PORT_MAX 48
+#define INT_PORT_MAX 48
 #define PWM_PORT_MAX 36
 #define ADC_PORT_MAX 16
 #define I2C_PORT_MAX 3
@@ -85,6 +86,11 @@ static void gpio_port_init(port_describe *desc)
     }
 
     port_pin_reserve(desc);
+}
+
+static void int_port_init(port_describe *desc)
+{
+    gpio_port_init(desc);
 }
 
 static void pwm_port_init(port_describe *desc)
@@ -195,8 +201,8 @@ static void uart_port_init(port_describe *desc)
     cell = cell_at(desc, 0);
     cell->pin[PORT_UART_TX].name = PA_9;
     cell->pin[PORT_UART_RX].name = PA_10;
-    cell->pin[PORT_UART_CTS].name = PA_11;
-    cell->pin[PORT_UART_RTS].name = PA_12;
+    cell->pin[PORT_UART_CTS].name = RESERVE_PIN;
+    cell->pin[PORT_UART_RTS].name = RESERVE_PIN;
 
     cell = cell_at(desc, 1);
     cell->pin[PORT_UART_TX].name = PA_2;
@@ -225,6 +231,9 @@ void port_hal_init(void)
     g_port_desc_tab[PORT_TYPE_ADC].pin_cnt = pin_cnt;
     g_port_desc_tab[PORT_TYPE_ADC].cell_cnt = ADC_PORT_MAX;
     g_port_desc_tab[PORT_TYPE_ADC].cell = (port_cell *)malloc(ADC_PORT_MAX * get_cell_size(pin_cnt));
+    g_port_desc_tab[PORT_TYPE_INT].pin_cnt = pin_cnt;
+    g_port_desc_tab[PORT_TYPE_INT].cell_cnt = INT_PORT_MAX;
+    g_port_desc_tab[PORT_TYPE_INT].cell = (port_cell *)malloc(INT_PORT_MAX * get_cell_size(pin_cnt));
 
     pin_cnt = 2;
     g_port_desc_tab[PORT_TYPE_I2C].pin_cnt = pin_cnt;
@@ -240,6 +249,7 @@ void port_hal_init(void)
     g_port_desc_tab[PORT_TYPE_SERIAL].cell = (port_cell *)malloc(UART_PORT_MAX * get_cell_size(pin_cnt));
 
     gpio_port_init(&g_port_desc_tab[PORT_TYPE_GPIO]);
+    int_port_init(&g_port_desc_tab[PORT_TYPE_INT]);
     pwm_port_init(&g_port_desc_tab[PORT_TYPE_PWM]);
     adc_port_init(&g_port_desc_tab[PORT_TYPE_ADC]);
     i2c_port_init(&g_port_desc_tab[PORT_TYPE_I2C]);
@@ -345,6 +355,7 @@ int port_hal_gpio_config(port_group group, uint8_t pin, gpio_config *attr)
     }
 
     reset_other_cell(name, PORT_TYPE_GPIO);
+    /* FIXME: 对new失败进行处理 */
     cell->enforcer = new DigitalInOut(name);
     cell->pin[0].is_used = 1;
 
@@ -611,6 +622,7 @@ int port_hal_pwm_write(port_group group, uint8_t pin, uint16_t value)
 /*********************************************************************************
  ************************************ ADC ****************************************
  *********************************************************************************/
+ /* TODO: 增加设置参考电压 */
 #define PORT_HAL_ADC_REF 3.3f
 
 int port_hal_adc_config(port_group group, uint8_t pin)
@@ -676,6 +688,129 @@ int port_hal_adc_read(port_group group, uint8_t pin, uint16_t *value)
 
     adc_in = (AnalogIn *)cell->enforcer;
     *value = adc_in->read_u16();
+
+    return PORT_CFG_OK;
+}
+
+/*********************************************************************************
+ ************************************ INT ****************************************
+ *********************************************************************************/
+class ext_int_enforcer
+{
+private:
+    using duration = std::chrono::duration<int, std::milli>;
+    static Thread _event_thread;
+    static EventQueue _queue;
+    InterruptIn *_int_in;
+    cmd_packet _packet;
+    bool _is_rise;
+    uint8_t _interval;
+
+    void int_bottom_half(void);
+public:
+    ext_int_enforcer(port_type type, port_group group, uint8_t pin);
+    void init(bool is_rise, uint8_t interval);
+    void enable(bool enable);
+    void entry(void);
+};
+
+Thread ext_int_enforcer::_event_thread;
+EventQueue ext_int_enforcer::_queue(128 * EVENTS_EVENT_SIZE);
+
+ext_int_enforcer::ext_int_enforcer(port_type type, port_group group, uint8_t pin)
+{
+    _packet.cmd.bit.dir = PORT_DIR_IN;
+    _packet.cmd.bit.mode = INTF_CMD_MODE_CTRL;
+    _packet.cmd.bit.type = type;
+    _packet.gpio.bit.group = group;
+    _packet.gpio.bit.pin = pin;
+    _packet.data_len = 1;
+    _packet.data[0] = 0;    // reserve
+
+    if (_event_thread.get_state() == Thread::Deleted) {
+        _event_thread.start(callback(&_queue, &EventQueue::dispatch_forever));
+    }
+}
+
+void ext_int_enforcer::init(bool is_rise, uint8_t interval)
+{
+    PinName name = get_pin_name((port_group)_packet.gpio.bit.group, _packet.gpio.bit.pin);
+    _int_in = new InterruptIn(name);
+    _is_rise = is_rise;
+    _interval = interval;
+
+    log_info("is_rise: %d, interval: %d\n", _is_rise, _interval);
+    if (is_rise) {
+        _int_in->rise(callback(this, &ext_int_enforcer::entry));
+        _int_in->mode(PullDown);
+    } else {
+        _int_in->fall(callback(this, &ext_int_enforcer::entry));
+        _int_in->mode(PullUp);
+    }
+}
+
+void ext_int_enforcer::enable(bool enable)
+{
+    if (enable) {
+        _int_in->enable_irq();
+    } else {
+        _int_in->disable_irq();
+    }
+}
+
+void ext_int_enforcer::entry(void)
+{
+    if (_interval != 0) {
+        _queue.call_in(duration(_interval), this, &ext_int_enforcer::int_bottom_half);
+    } else {
+        _queue.call(this, &ext_int_enforcer::int_bottom_half);
+    }
+}
+
+void ext_int_enforcer::int_bottom_half(void)
+{
+    bool confirm = true;
+
+    if (_interval != 0) {
+        int expect = _is_rise ? 1 : 0;
+        confirm = (_int_in->read() == expect ? true : false);
+    }
+
+    if (confirm) {
+        (void)usb_msg_queue_block_put(&_packet);
+    }
+}
+
+int port_hal_int_config(port_group group, uint8_t pin, const interrupt_config *config)
+{
+    port_cell *cell;
+    ext_int_enforcer *int_enforcer;
+    PinName name = get_pin_name(group, pin);
+    uint8_t num;
+
+    if (name > PIN_NAME_MAX) {
+        log_err("NOT support group %d, pin %d\n", group, pin);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    cell = get_port_cell(name, PORT_TYPE_INT, &num);
+    if (cell == NULL) {
+        log_err("NOT support PinName: %d\n", name);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    reset_other_cell(name, PORT_TYPE_INT);
+    if (cell->enforcer != NULL) {
+        log_info("The pin has been inited: %d\n", name);
+        int_enforcer = (ext_int_enforcer *)cell->enforcer;
+    } else {
+        int_enforcer = new ext_int_enforcer(PORT_TYPE_INT, group, pin);
+        int_enforcer->init(config->mode == INT_MODE_RISE_EDGE, config->interval);
+        cell->enforcer = int_enforcer;
+    }
+    
+    int_enforcer->enable(config->enable == 1);
+    cell->pin[0].is_used = 1;
 
     return PORT_CFG_OK;
 }

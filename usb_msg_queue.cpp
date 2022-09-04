@@ -176,6 +176,25 @@ static int adc_cfg_exec_func(cmd_packet *packet)
     return ret;
 }
 
+static int int_cfg_exec_func(cmd_packet *packet)
+{
+    int ret;
+    log_info("\n");
+
+    if (packet->data_len != sizeof(interrupt_config)) {
+        log_err("invalid data len: %d\n", packet->data_len);
+        return osError;
+    }
+
+    log_info("content: %x %x\n", packet->data[0], packet->data[1]);
+    ret = port_hal_int_config((port_group)packet->gpio.bit.group, packet->gpio.bit.pin,
+        (const interrupt_config *)packet->data);
+    packet->data_len = 1;
+    packet->data[0] = ret;
+
+    return ret;
+}
+
 typedef struct {
     port_type cmd_type;
     intf_cmd_mode cmd_mode;
@@ -195,7 +214,8 @@ static const cmd_exec_unit g_cmd_exec_tab[] = {
     { PORT_TYPE_GPIO, INTF_CMD_MODE_CFG, PORT_DIR_MAX, gpio_cfg_exec_func },
     { PORT_TYPE_SERIAL, INTF_CMD_MODE_CFG, PORT_DIR_MAX, serial_cfg_exec_func },
     { PORT_TYPE_PWM, INTF_CMD_MODE_CFG, PORT_DIR_MAX, pwm_cfg_exec_func },
-    { PORT_TYPE_ADC, INTF_CMD_MODE_CFG, PORT_DIR_MAX, adc_cfg_exec_func }
+    { PORT_TYPE_ADC, INTF_CMD_MODE_CFG, PORT_DIR_MAX, adc_cfg_exec_func },
+    { PORT_TYPE_INT, INTF_CMD_MODE_CFG, PORT_DIR_MAX, int_cfg_exec_func }
 };
 
 int msg_parse_exec(cmd_packet *packet)

@@ -52,7 +52,7 @@ enum {
 
 void usb_comm_init(void);
 int usb_msg_queue_block_get(cmd_packet *packet);
-int usb_msg_queue_put(const cmd_packet *packet);
+int usb_msg_queue_block_put(const cmd_packet *packet);
 void usb_printf(const char *format, ...);
 
 #define DEBUG

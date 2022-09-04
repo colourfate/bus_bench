@@ -42,9 +42,12 @@ int usb_msg_queue_block_get(cmd_packet *packet)
     return USB_MSG_OK;
 }
 
-int usb_msg_queue_put(const cmd_packet *packet)
+static Mutex send_mutex;
+
+int usb_msg_queue_block_put(const cmd_packet *packet)
 {
     uint8_t data_len;
+    bool send_ok;
     
     if (packet == NULL) {
         log_err("packet is NULL\n");
@@ -57,7 +60,10 @@ int usb_msg_queue_put(const cmd_packet *packet)
     }
     
     data_len = USB_MSG_HEAD_LEN + packet->data_len;
-    if (!g_usb_serial.send((uint8_t *)packet, data_len)) {
+    send_mutex.lock();
+    send_ok = g_usb_serial.send((uint8_t *)packet, data_len);
+    send_mutex.unlock();
+    if (!send_ok) {
         log_err("serial send failed\n");
         return USB_MSG_INTER_ERROR;
     }
@@ -93,5 +99,8 @@ void usb_printf(const char *format, ...)
     packet->gpio.data = 0;
     packet->data_len = len;
 
-    while (!g_usb_serial.send(g_raw_data, len + USB_MSG_HEAD_LEN));
+    /* blocking send */
+    send_mutex.lock();
+    (void)g_usb_serial.send(g_raw_data, len + USB_MSG_HEAD_LEN);
+    send_mutex.unlock();
 }

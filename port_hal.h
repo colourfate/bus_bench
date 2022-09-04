@@ -22,7 +22,7 @@ typedef enum {
     PORT_TYPE_SERIAL,
     PORT_TYPE_I2C,
     PORT_TYPE_SPI,
-    //PORT_TYPE_INT,
+    PORT_TYPE_INT,
     //PORT_TYPE_IC,
     //PORT_TYPE_CAN,
     PORT_TYPE_MAX
@@ -120,12 +120,27 @@ typedef struct {
     uint16_t frequency;     // 1Hz~50KHz
 } pwm_config;
 
+typedef enum {
+    INT_MODE_RISE_EDGE,
+    INT_MODE_FALL_EDGE,
+    INT_MODE_MAX
+} interrupt_mode;
+
+typedef struct {
+    uint8_t enable : 1;
+    uint8_t mode : 1;
+    uint8_t reserve : 6;
+
+    uint8_t interval;
+} interrupt_config;
+
 void port_hal_init(void);
 void port_hal_deinit(void);
 int port_hal_gpio_config(port_group group, uint8_t pin, gpio_config *attr);
 int port_hal_serial_config(port_group group, uint8_t pin, const uart_config *config);
 int port_hal_pwm_config(port_group group, uint8_t pin, const pwm_config *config);
 int port_hal_adc_config(port_group group, uint8_t pin);
+int port_hal_int_config(port_group group, uint8_t pin, const interrupt_config *config);
 
 int port_hal_gpio_read(port_group group, uint8_t pin, uint8_t *value);
 int port_hal_gpio_write(port_group group, uint8_t pin, uint8_t value);
