@@ -48,9 +48,11 @@ int main()
                 packet->gpio.bit.group, packet->gpio.bit.pin,
                 packet->data_len, packet->data[0]);
 
+            /*
             for (i = 0; i < packet->data_len; i++) {
-                log_info_raw("%c(%d) ", packet->data[i], i);
+                log_info_raw("0x%x(%d) ", packet->data[i], i);
             }
+            */
 
             ret = usb_msg_queue_block_put(packet);
             if (ret != USB_MSG_OK) {

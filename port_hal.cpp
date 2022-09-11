@@ -814,3 +814,115 @@ int port_hal_int_config(port_group group, uint8_t pin, const interrupt_config *c
 
     return PORT_CFG_OK;
 }
+
+/*********************************************************************************
+ ************************************ I2C ****************************************
+ *********************************************************************************/
+static const uint32_t i2c_freq_tab[I2C_FREQ_MAX] = {100000, 400000, 1000000, 3400000};
+
+int port_hal_i2c_config(port_group group, uint8_t pin, const i2c_config *config)
+{
+    port_cell *cell;
+    I2C *i2c;
+    PinName name = get_pin_name(group, pin);
+    uint8_t num;
+
+    if (config == NULL || config->frequency > I2C_FREQ_HSM) {
+        log_err("i2c config invalid\n");
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    if (name > PIN_NAME_MAX) {
+        log_err("NOT support group %d, pin %d\n", group, pin);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    cell = get_port_cell(name, PORT_TYPE_I2C, &num);
+    if (cell == NULL) {
+        log_err("NOT support PinName: %d\n", name);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    reset_other_cell(name, PORT_TYPE_I2C);
+    if (cell->enforcer != NULL) {
+        log_info("The pin has been inited: %d\n", name);
+        i2c = (I2C *)cell->enforcer;
+    } else {
+        i2c = new I2C((PinName)cell->pin[PORT_I2C_SDA].name, (PinName)cell->pin[PORT_I2C_SCL].name);
+        cell->enforcer = i2c;
+    }
+
+    i2c->frequency(i2c_freq_tab[config->frequency]);
+    cell->pin[PORT_I2C_SCL].is_used = 1;
+    cell->pin[PORT_I2C_SDA].is_used = 1;
+
+    return PORT_CFG_OK;
+}
+
+static int i2c_io_func(PinName name, bool is_write, i2c_ctrl *ctrl, uint8_t data_len)
+{
+    port_cell *cell;
+    I2C *i2c;
+    uint8_t num;
+    int ret, i;
+
+    cell = get_port_cell(name, PORT_TYPE_I2C, &num);
+    if (cell == NULL) {
+        log_err("NOT support PinName: %d\n", name);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    if (cell->enforcer == NULL) {
+        log_err("PinName: %d NOT inited\n", name);
+        return PORT_CFG_NOT_INIT;
+    }
+
+    i2c = (I2C *)cell->enforcer;
+    if (is_write) {
+        ret = i2c->write(ctrl->addr, ctrl->data, data_len, ctrl->repeated);
+    } else {
+        ret = i2c->read(ctrl->addr, ctrl->data, data_len, ctrl->repeated);
+    }
+
+    if (ret != 0) {
+        log_err("i2c ctrl(%d) failed\n", is_write);
+    }
+    
+    return PORT_CFG_OK;
+}
+
+int port_hal_i2c_read(port_group group, uint8_t pin, i2c_ctrl *ctrl, uint8_t ctrl_size)
+{
+    uint8_t data_len = ctrl_size - sizeof(i2c_ctrl);
+    PinName name = get_pin_name(group, pin);
+
+    if (name > PIN_NAME_MAX) {
+        log_err("NOT support group %d, pin %d\n", group, pin);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    if (ctrl == NULL || data_len == 0) {
+        log_err("i2c control invalid\n");
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    return i2c_io_func(name, false, ctrl, data_len);
+}
+
+int port_hal_i2c_write(port_group group, uint8_t pin, i2c_ctrl *ctrl, uint8_t ctrl_size)
+{
+    uint8_t data_len = ctrl_size - sizeof(i2c_ctrl);
+    PinName name = get_pin_name(group, pin);
+
+    if (name > PIN_NAME_MAX) {
+        log_err("NOT support group %d, pin %d\n", group, pin);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    if (ctrl == NULL || data_len == 0) {
+        log_err("i2c control invalid\n");
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    return i2c_io_func(name, true, ctrl, data_len);
+}
