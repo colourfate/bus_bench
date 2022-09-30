@@ -2,10 +2,15 @@
 #define _PORT_HAL_H_
 
 #include "mbed.h"
+#include "usb_comm.h"
 
 #define HAL_PWM_MAX_FREQ 50000
 #define HAL_PWM_MIN_FREQ 1
 #define HAL_PWM_MAX_DUTY_CYCLE 1000
+#define HAL_SPI_MAX_FREQ 18000
+#define HAL_SPI_MIN_FREQ 1
+#define HAL_SPI_MAX_BITS 32
+#define HAL_SPI_MIN_BITS 4
 
 enum {
     PORT_CFG_OK,
@@ -153,6 +158,20 @@ typedef struct {
     char data[0];
 } i2c_ctrl;
 
+typedef struct {
+    uint16_t frequency;     /* 1K~18000KHz */
+    uint8_t bits : 6;       /* 4~32bit */
+    uint8_t pol : 1;        /* polarity */
+    uint8_t pha : 1;        /* phase */
+    intf_gpio csb;
+} spi_config;
+
+typedef struct {
+    uint8_t tx_len;
+    uint8_t rx_len;
+    char data[0];
+} spi_ctrl;
+
 void port_hal_init(void);
 void port_hal_deinit(void);
 int port_hal_gpio_config(port_group group, uint8_t pin, gpio_config *attr);
@@ -161,6 +180,7 @@ int port_hal_pwm_config(port_group group, uint8_t pin, const pwm_config *config)
 int port_hal_adc_config(port_group group, uint8_t pin);
 int port_hal_int_config(port_group group, uint8_t pin, const interrupt_config *config);
 int port_hal_i2c_config(port_group group, uint8_t pin, const i2c_config *config);
+int port_hal_spi_config(port_group group, uint8_t pin, const spi_config *config);
 
 int port_hal_gpio_read(port_group group, uint8_t pin, uint8_t *value);
 int port_hal_gpio_write(port_group group, uint8_t pin, uint8_t value);
@@ -170,5 +190,6 @@ int port_hal_pwm_write(port_group group, uint8_t pin, uint16_t value);
 int port_hal_adc_read(port_group group, uint8_t pin, uint16_t *value);
 int port_hal_i2c_read(port_group group, uint8_t pin, i2c_ctrl *ctrl, uint8_t ctrl_size);
 int port_hal_i2c_write(port_group group, uint8_t pin, i2c_ctrl *ctrl, uint8_t ctrl_size);
+int port_hal_spi_transfer(port_group group, uint8_t pin, uint8_t *data, uint8_t data_len);
 
 #endif

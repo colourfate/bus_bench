@@ -51,7 +51,7 @@ static int gpio_write_exec_func(cmd_packet *packet)
 
     ret = port_hal_gpio_write((port_group)packet->gpio.bit.group, packet->gpio.bit.pin, packet->data[0]);
     if (ret != osOK) {
-        log_err("port_hal_gpio_read failed\n");
+        log_err("port_hal_gpio_write failed\n");
         return USB_MSG_FAILED;
     }
 
@@ -86,7 +86,7 @@ static int pwm_write_exec_func(cmd_packet *packet)
     value = packet->data[0] | packet->data[1] << 8;
     ret = port_hal_pwm_write((port_group)packet->gpio.bit.group, packet->gpio.bit.pin, value);
     if (ret != osOK) {
-        log_err("port_hal_gpio_read failed\n");
+        log_err("port_hal_pwm_write failed\n");
         return USB_MSG_FAILED;
     }
 
@@ -106,7 +106,7 @@ static int adc_read_exec_func(cmd_packet *packet)
 
     ret = port_hal_adc_read((port_group)packet->gpio.bit.group, packet->gpio.bit.pin, &value);
     if (ret != osOK) {
-        log_err("port_hal_gpio_read failed\n");
+        log_err("port_hal_adc_read failed\n");
         return USB_MSG_FAILED;
     }
 
@@ -150,6 +150,26 @@ static int i2c_write_exec_func(cmd_packet *packet)
         (i2c_ctrl *)packet->data, packet->data_len);
     if (ret != osOK) {
         log_err("port_hal_i2c_write failed\n");
+        return USB_MSG_FAILED;
+    }
+
+    return USB_MSG_OK;
+}
+
+static int spi_transfer_exec_func(cmd_packet *packet)
+{
+    int ret;
+
+    log_info("\n");
+    if (packet->data_len <= sizeof(spi_ctrl)) {
+        log_err("Invalid param len: %d\n", packet->data_len);
+        return USB_MSG_FAILED;
+    }
+
+    ret = port_hal_spi_transfer((port_group)packet->gpio.bit.group, packet->gpio.bit.pin,
+        packet->data, packet->data_len);
+    if (ret != osOK) {
+        log_err("port_hal_spi_transfer failed\n");
         return USB_MSG_FAILED;
     }
 
@@ -252,6 +272,24 @@ static int i2c_cfg_exec_func(cmd_packet *packet)
     return ret;
 }
 
+static int spi_cfg_exec_func(cmd_packet *packet)
+{
+    int ret;
+    log_info("\n");
+
+    if (packet->data_len != sizeof(spi_config)) {
+        log_err("invalid data len: %d : %d\n", packet->data_len, sizeof(spi_config));
+        return osError;
+    }
+
+    ret = port_hal_spi_config((port_group)packet->gpio.bit.group, packet->gpio.bit.pin,
+        (const spi_config *)packet->data);
+    packet->data_len = 1;
+    packet->data[0] = ret;
+
+    return ret;
+}
+
 typedef struct {
     port_type cmd_type;
     intf_cmd_mode cmd_mode;
@@ -259,7 +297,7 @@ typedef struct {
     int (*entry)(cmd_packet *packet);
 } cmd_exec_unit;
 
-/* FIXME: 不要区分输入输出 */
+/* TODO: 增加双向输入输出 */
 static const cmd_exec_unit g_cmd_exec_tab[] = {
     /* control function */
     { PORT_TYPE_GPIO, INTF_CMD_MODE_CTRL, PORT_DIR_IN, gpio_read_exec_func },
@@ -270,13 +308,15 @@ static const cmd_exec_unit g_cmd_exec_tab[] = {
     { PORT_TYPE_ADC, INTF_CMD_MODE_CTRL, PORT_DIR_IN, adc_read_exec_func },
     { PORT_TYPE_I2C, INTF_CMD_MODE_CTRL, PORT_DIR_IN, i2c_read_exec_func },
     { PORT_TYPE_I2C, INTF_CMD_MODE_CTRL, PORT_DIR_OUT, i2c_write_exec_func },
+    { PORT_TYPE_SPI, INTF_CMD_MODE_CTRL, PORT_DIR_IN, spi_transfer_exec_func },
     /* config function */
     { PORT_TYPE_GPIO, INTF_CMD_MODE_CFG, PORT_DIR_MAX, gpio_cfg_exec_func },
     { PORT_TYPE_SERIAL, INTF_CMD_MODE_CFG, PORT_DIR_MAX, serial_cfg_exec_func },
     { PORT_TYPE_PWM, INTF_CMD_MODE_CFG, PORT_DIR_MAX, pwm_cfg_exec_func },
     { PORT_TYPE_ADC, INTF_CMD_MODE_CFG, PORT_DIR_MAX, adc_cfg_exec_func },
     { PORT_TYPE_INT, INTF_CMD_MODE_CFG, PORT_DIR_MAX, int_cfg_exec_func },
-    { PORT_TYPE_I2C, INTF_CMD_MODE_CFG, PORT_DIR_MAX, i2c_cfg_exec_func }
+    { PORT_TYPE_I2C, INTF_CMD_MODE_CFG, PORT_DIR_MAX, i2c_cfg_exec_func },
+    { PORT_TYPE_SPI, INTF_CMD_MODE_CFG, PORT_DIR_MAX, spi_cfg_exec_func }
 };
 
 int msg_parse_exec(cmd_packet *packet)

@@ -1,7 +1,6 @@
 #include "port_hal.h"
 #include "mbed.h"
 #include "bus_common.h"
-#include "usb_comm.h"
 
 #define RESERVE_PIN 0xff
 #define PIN_NAME_MAX PC_15
@@ -23,7 +22,7 @@ enum {
 };
 
 enum {
-    PORT_SPI_SLK, PORT_SPI_MISO, PORT_SPI_MOSI, PORT_SPI_SEL, PORT_SPI_MAX
+    PORT_SPI_SLK, PORT_SPI_MISO, PORT_SPI_MOSI, PORT_SPI_MAX
 };
 
 typedef union {
@@ -73,6 +72,7 @@ static void port_pin_reserve(port_describe *desc)
     cell->pin[0].data = RESERVE_PIN;
 }
 
+// TODO: 改为静态初始化
 static void gpio_port_init(port_describe *desc)
 {
     uint8_t i;
@@ -176,19 +176,16 @@ static void spi_port_init(port_describe *desc)
     cell->pin[PORT_SPI_SLK].name = PA_5;
     cell->pin[PORT_SPI_MISO].name = PA_6;
     cell->pin[PORT_SPI_MOSI].name = PA_7;
-    cell->pin[PORT_SPI_SEL].name = PA_4;
 
     cell = cell_at(desc, 1);
     cell->pin[PORT_SPI_SLK].name = PB_13;
     cell->pin[PORT_SPI_MISO].name = PB_14;
     cell->pin[PORT_SPI_MOSI].name = PB_15;
-    cell->pin[PORT_SPI_SEL].name = PB_12;
 
     cell = cell_at(desc, 2);
     cell->pin[PORT_SPI_SLK].name = PC_10;
     cell->pin[PORT_SPI_MISO].name = PC_11;
     cell->pin[PORT_SPI_MOSI].name = PC_12;
-    cell->pin[PORT_SPI_SEL].name = PA_4;
 }
 
 static void uart_port_init(port_describe *desc)
@@ -240,10 +237,12 @@ void port_hal_init(void)
     g_port_desc_tab[PORT_TYPE_I2C].cell_cnt = I2C_PORT_MAX;
     g_port_desc_tab[PORT_TYPE_I2C].cell = (port_cell *)malloc(I2C_PORT_MAX * get_cell_size(pin_cnt));
 
-    pin_cnt = 4;
+    pin_cnt = 3;
     g_port_desc_tab[PORT_TYPE_SPI].pin_cnt = pin_cnt;
     g_port_desc_tab[PORT_TYPE_SPI].cell_cnt = SPI_PORT_MAX;
     g_port_desc_tab[PORT_TYPE_SPI].cell = (port_cell *)malloc(SPI_PORT_MAX * get_cell_size(pin_cnt));
+
+    pin_cnt = 4;
     g_port_desc_tab[PORT_TYPE_SERIAL].pin_cnt = pin_cnt;
     g_port_desc_tab[PORT_TYPE_SERIAL].cell_cnt = UART_PORT_MAX;
     g_port_desc_tab[PORT_TYPE_SERIAL].cell = (port_cell *)malloc(UART_PORT_MAX * get_cell_size(pin_cnt));
@@ -908,7 +907,7 @@ int port_hal_i2c_read(port_group group, uint8_t pin, i2c_ctrl *ctrl, uint8_t ctr
 
     return i2c_io_func(name, false, ctrl, data_len);
 }
-
+/* TODO: 统一为transfer */
 int port_hal_i2c_write(port_group group, uint8_t pin, i2c_ctrl *ctrl, uint8_t ctrl_size)
 {
     uint8_t data_len = ctrl_size - sizeof(i2c_ctrl);
@@ -925,4 +924,132 @@ int port_hal_i2c_write(port_group group, uint8_t pin, i2c_ctrl *ctrl, uint8_t ct
     }
 
     return i2c_io_func(name, true, ctrl, data_len);
+}
+
+/*********************************************************************************
+ ************************************ SPI ****************************************
+ *********************************************************************************/
+static bool spi_config_invalid(const spi_config *config)
+{
+    if (config->bits > HAL_SPI_MAX_BITS || config->bits < HAL_SPI_MIN_BITS) {
+        log_err("spi bits is invalied: %d\n", config->bits);
+        return true;
+    }
+
+    if (config->frequency > HAL_SPI_MAX_FREQ || config->frequency < HAL_SPI_MIN_FREQ) {
+        log_err("spi frequency is invalied: %d\n", config->frequency);
+        return true;
+    }
+
+    return false;
+}
+
+static SPI *spi_request(PinName mosi, PinName miso, PinName sck, PinName csb)
+{
+    port_cell *gpio_cell;
+    uint8_t num;
+    const bool mult_opr = false;        // not support
+
+    if (mult_opr) {
+        gpio_cell = get_port_cell(csb, PORT_TYPE_GPIO, &num);
+        if (gpio_cell->enforcer != NULL) {
+            log_info("Ready to disable Pin: %d\n", csb);
+            DigitalInOut *gpio = (DigitalInOut *)gpio_cell->enforcer;
+            delete gpio;
+        }
+
+        gpio_cell->pin[0].data = RESERVE_PIN;
+        return new SPI(mosi, miso, sck, csb, use_gpio_ssel);
+    } else {
+        return new SPI(mosi, miso, sck);
+    }
+}
+
+int port_hal_spi_config(port_group group, uint8_t pin, const spi_config *config)
+{
+    port_cell *cell;
+    SPI *spi;
+    PinName name, csb;
+    uint8_t num;
+
+    if (config == NULL) {
+        log_err("config is NULL\n");
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    if (spi_config_invalid(config)) {
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    name = get_pin_name(group, pin);
+    csb = get_pin_name((port_group)config->csb.bit.group, config->csb.bit.pin);
+    if (name > PIN_NAME_MAX || csb > PIN_NAME_MAX) {
+        log_err("NOT support PinName: %d %d\n", name, csb);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    cell = get_port_cell(name, PORT_TYPE_SPI, &num);
+    if (cell == NULL) {
+        log_err("NOT support PinName: %d\n", name);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    reset_other_cell(name, PORT_TYPE_SPI);
+    if (cell->enforcer != NULL) {
+        log_info("The pin has been inited: %d\n", name);
+        spi = (SPI *)cell->enforcer;
+    } else {
+        spi = spi_request((PinName)cell->pin[PORT_SPI_MOSI].name, (PinName)cell->pin[PORT_SPI_MISO].name,
+            (PinName)cell->pin[PORT_SPI_SLK].name, csb);
+        cell->enforcer = spi;
+    }
+
+    spi->format(config->bits, config->pol | config->pha);
+    spi->frequency(config->frequency * 1000);
+    cell->pin[PORT_SPI_MOSI].is_used = 1;
+    cell->pin[PORT_SPI_MISO].is_used = 1;
+    cell->pin[PORT_SPI_SLK].is_used = 1;
+
+    return PORT_CFG_OK;
+}
+
+int port_hal_spi_transfer(port_group group, uint8_t pin, uint8_t *data, uint8_t data_len)
+{
+    PinName name = get_pin_name(group, pin);
+    port_cell *cell;
+    SPI *spi;
+    uint8_t num;
+    int ret;
+
+    if (name > PIN_NAME_MAX) {
+        log_err("NOT support group %d, pin %d\n", group, pin);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    if (data == NULL || data_len <= 2) {
+        log_err("i2c control invalid\n");
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    cell = get_port_cell(name, PORT_TYPE_SPI, &num);
+    if (cell == NULL) {
+        log_err("NOT support PinName: %d\n", name);
+        return PORT_CFG_INVALID_PARAM;
+    }
+
+    if (cell->enforcer == NULL) {
+        log_err("PinName: %d NOT inited\n", name);
+        return PORT_CFG_NOT_INIT;
+    }
+
+    spi = (SPI *)cell->enforcer;
+
+    uint8_t start = 0;
+    while (start < data_len) {
+        spi_ctrl *ctrl = (spi_ctrl *)&data[start];
+        spi->write(&ctrl->data[0], ctrl->tx_len, &ctrl->data[ctrl->tx_len], ctrl->rx_len);
+        start += (ctrl->tx_len + ctrl->rx_len);
+    }
+
+    return PORT_CFG_OK;
 }
